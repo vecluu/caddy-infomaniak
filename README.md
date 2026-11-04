@@ -1,7 +1,7 @@
 # caddy-infomaniak
 
 [![Release](https://github.com/vecluu/caddy-infomaniak/actions/workflows/release.yml/badge.svg)](https://github.com/vecluu/caddy-infomaniak/actions/workflows/release.yml)
-[![Caddy](https://img.shields.io/github/v/release/vecluu/caddy-infomaniak?sort=semver&label=caddy)](https://github.com/vecluu/caddy-infomaniak/releases/latest)
+[![Caddy](https://img.shields.io/github/v/release/vecluu/caddy-infomaniak?sort=semver&label=caddy&logo=caddy)](https://github.com/vecluu/caddy-infomaniak/releases/latest)
 [![Image](https://img.shields.io/badge/image-ghcr.io-blue?logo=github)](https://github.com/vecluu/caddy-infomaniak/pkgs/container/caddy-infomaniak)
 ![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-blue)
 
