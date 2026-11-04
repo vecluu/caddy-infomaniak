@@ -1,5 +1,10 @@
 # caddy-infomaniak
 
+[![Release](https://github.com/vecluu/caddy-infomaniak/actions/workflows/release.yml/badge.svg)](https://github.com/vecluu/caddy-infomaniak/actions/workflows/release.yml)
+[![Caddy](https://img.shields.io/github/v/release/vecluu/caddy-infomaniak?sort=semver&label=caddy)](https://github.com/vecluu/caddy-infomaniak/releases/latest)
+[![Image](https://img.shields.io/badge/image-ghcr.io-blue?logo=github)](https://github.com/vecluu/caddy-infomaniak/pkgs/container/caddy-infomaniak)
+![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-blue)
+
 A distroless [Caddy](https://caddyserver.com) image with the [Infomaniak DNS plugin](https://github.com/caddy-dns/infomaniak), for issuing certificates through ACME DNS challenges. This covers wildcard certificates and hosts that aren't reachable from the internet.
 
 New Caddy releases are picked up, built, tested and published automatically after a 24-hour cooldown.
