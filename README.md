@@ -1,9 +1,10 @@
 # caddy-infomaniak
 
 [![Release](https://github.com/vecluu/caddy-infomaniak/actions/workflows/release.yml/badge.svg)](https://github.com/vecluu/caddy-infomaniak/actions/workflows/release.yml)
-[![Caddy](https://img.shields.io/github/v/release/vecluu/caddy-infomaniak?sort=semver&label=caddy&logo=caddy)](https://github.com/vecluu/caddy-infomaniak/releases/latest)
+[![Caddy](https://img.shields.io/github/v/release/vecluu/caddy-infomaniak?sort=semver&label=caddy)](https://github.com/vecluu/caddy-infomaniak/releases/latest)
 [![Image](https://img.shields.io/badge/image-ghcr.io-blue?logo=github)](https://github.com/vecluu/caddy-infomaniak/pkgs/container/caddy-infomaniak)
 ![Platforms](https://img.shields.io/badge/platforms-amd64%20%7C%20arm64-blue)
+[![License](https://img.shields.io/badge/license-Apache--2.0-blue)](LICENSE)
 
 A distroless [Caddy](https://caddyserver.com) image with the [Infomaniak DNS plugin](https://github.com/caddy-dns/infomaniak), for issuing certificates through ACME DNS challenges. This covers wildcard certificates and hosts that aren't reachable from the internet.
 
@@ -84,3 +85,9 @@ The plugin version is pinned by `INFOMANIAK_VERSION` in the `Dockerfile`, so a n
 [`.github/workflows/plugin-update.yml`](.github/workflows/plugin-update.yml) runs daily. When the plugin has a new tag, it builds and smoke tests the image, then opens a pull request linking to the upstream changes.
 
 Merging the pull request triggers a rebuild of the current Caddy version, which replaces the existing image tags.
+
+## License
+
+The files in this repository are licensed under the [Apache License 2.0](LICENSE). The software inside the image, including Caddy, the plugin and the base image, keeps its own licenses.
+
+Not affiliated with or endorsed by the Caddy project. Caddy is a registered trademark of Stack Holdings GmbH.
