@@ -1,0 +1,4 @@
+# Placeholder config. Replace by mounting a config at /etc/caddy/Caddyfile.
+:80 {
+	respond "caddy-infomaniak is running"
+}

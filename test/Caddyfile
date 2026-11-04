@@ -1,0 +1,11 @@
+# Used by the release pipeline to prove the image can load a DNS challenge config.
+{
+	acme_dns infomaniak {env.INFOMANIAK_API_TOKEN}
+}
+
+smoke.example.com {
+	tls {
+		dns infomaniak {env.INFOMANIAK_API_TOKEN}
+	}
+	respond "ok"
+}

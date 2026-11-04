@@ -1,0 +1,165 @@
+name: Release
+
+on:
+  schedule:
+    - cron: "17 */6 * * *"
+  # Merging a plugin update. Commits made by this workflow don't trigger it.
+  push:
+    branches: [main]
+    paths: [Dockerfile]
+  workflow_dispatch:
+    inputs:
+      force:
+        description: Rebuild the current version even if there is no new Caddy release
+        type: boolean
+        default: false
+
+permissions: {}
+
+concurrency:
+  group: release
+
+env:
+  COOLDOWN_HOURS: 24
+
+jobs:
+  check:
+    # Forks never run this. Skipping it also skips the release job.
+    if: github.repository == 'vecluu/caddy-infomaniak'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      build: ${{ steps.check.outputs.build }}
+      version: ${{ steps.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - id: check
+        env:
+          GH_TOKEN: ${{ github.token }}
+          FORCE: ${{ inputs.force || github.event_name == 'push' }}
+        run: |
+          current=$(sed -n 's/^ARG CADDY_VERSION=//p' Dockerfile)
+
+          if [[ "$FORCE" == "true" ]]; then
+            echo "Forced rebuild of $current"
+            echo "version=$current" >> "$GITHUB_OUTPUT"
+            echo "build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # releases/latest never returns drafts or pre-releases.
+          latest=$(gh api repos/caddyserver/caddy/releases/latest --jq '.tag_name | ltrimstr("v")')
+          if [[ ! "$latest" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "::error::Unexpected Caddy version: $latest"
+            exit 1
+          fi
+
+          newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n1)
+          if [[ "$latest" == "$current" || "$newest" == "$current" ]]; then
+            echo "Already on $current (latest upstream: $latest)"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          # Wait until this exact image has been public for the whole cooldown.
+          # A re-pushed tag restarts it. Later runs retry.
+          pushed=$(curl -fsSL "https://hub.docker.com/v2/repositories/library/caddy/tags/$latest-builder" \
+            | jq -r '.tag_last_pushed // empty') || true
+          if [[ -z "$pushed" ]]; then
+            echo "::notice::caddy:$latest-builder is not on Docker Hub yet"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          age_hours=$(( ($(date +%s) - $(date -d "$pushed" +%s)) / 3600 ))
+          if (( age_hours < COOLDOWN_HOURS )); then
+            echo "::notice::caddy:$latest-builder is ${age_hours}h old, waiting for ${COOLDOWN_HOURS}h"
+            echo "build=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Updating $current -> $latest"
+          echo "version=$latest" >> "$GITHUB_OUTPUT"
+          echo "build=true" >> "$GITHUB_OUTPUT"
+
+  release:
+    needs: check
+    if: needs.check.outputs.build == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      packages: write
+    env:
+      VERSION: ${{ needs.check.outputs.version }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Set version
+        run: sed -i "s/^ARG CADDY_VERSION=.*/ARG CADDY_VERSION=$VERSION/" Dockerfile
+
+      - uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - uses: docker/login-action@81c6f93d4bc991e510b342a00b419b3bb4efc5c6 # v4.7.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ github.token }}
+
+      - id: meta
+        uses: docker/metadata-action@dc802804100637a589fabce1cb79ff13a1411302 # v6.2.0
+        with:
+          images: ghcr.io/${{ github.repository }}
+          flavor: latest=true
+          tags: |
+            type=semver,pattern={{version}},value=v${{ env.VERSION }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ env.VERSION }}
+            type=semver,pattern={{major}},value=v${{ env.VERSION }}
+
+      - name: Build for testing
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: caddy-infomaniak:smoke
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: test/smoke.sh caddy-infomaniak:smoke
+
+      - name: Build and push
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          push: true
+          platforms: linux/amd64,linux/arm64
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: mode=max
+          sbom: true
+
+      # Runs last so a failed build is retried instead of being recorded as done.
+      - name: Commit version bump
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          if ! git diff --quiet Dockerfile; then
+            git commit -m "Update Caddy to $VERSION" Dockerfile
+            git pull --rebase
+            git push
+          fi
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if ! gh release view "v$VERSION" > /dev/null 2>&1; then
+            gh release create "v$VERSION" --target "$(git rev-parse HEAD)" --title "Caddy $VERSION" \
+              --notes "Built from [Caddy v$VERSION](https://github.com/caddyserver/caddy/releases/tag/v$VERSION). Image: \`ghcr.io/${GITHUB_REPOSITORY,,}:$VERSION\`"
+          fi

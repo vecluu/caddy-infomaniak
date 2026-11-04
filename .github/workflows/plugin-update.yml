@@ -1,0 +1,95 @@
+name: Plugin update
+
+on:
+  schedule:
+    - cron: "43 5 * * *"
+  workflow_dispatch:
+
+permissions: {}
+
+jobs:
+  update:
+    # Forks never run this.
+    if: github.repository == 'vecluu/caddy-infomaniak'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+      pull-requests: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - id: check
+        run: |
+          current=$(sed -n 's/^ARG INFOMANIAK_VERSION=//p' Dockerfile)
+          latest=$(gh api repos/caddy-dns/infomaniak/tags --jq '.[].name' \
+            | sed -n 's/^v\([0-9]*\.[0-9]*\.[0-9]*\)$/\1/p' | sort -V | tail -n1)
+          if [[ -z "$latest" ]]; then
+            echo "::error::No usable plugin tags found"
+            exit 1
+          fi
+
+          newest=$(printf '%s\n%s\n' "$current" "$latest" | sort -V | tail -n1)
+          if [[ "$latest" == "$current" || "$newest" == "$current" ]]; then
+            echo "Already on $current (latest upstream: $latest)"
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          branch="update-infomaniak-plugin-$latest"
+          # --state all: a closed pull request means this version was rejected.
+          if [[ $(gh pr list --state all --head "$branch" --json number --jq length) != 0 ]]; then
+            echo "A pull request for $latest already exists"
+            echo "update=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Updating $current -> $latest"
+          {
+            echo "update=true"
+            echo "current=$current"
+            echo "version=$latest"
+            echo "branch=$branch"
+          } >> "$GITHUB_OUTPUT"
+
+      - name: Set version
+        if: steps.check.outputs.update == 'true'
+        env:
+          VERSION: ${{ steps.check.outputs.version }}
+        run: sed -i "s/^ARG INFOMANIAK_VERSION=.*/ARG INFOMANIAK_VERSION=$VERSION/" Dockerfile
+
+      - if: steps.check.outputs.update == 'true'
+        uses: docker/setup-buildx-action@f87e5991a6d7451dcb8d9637bfbc97413f497069 # v4.4.1
+
+      - name: Build for testing
+        if: steps.check.outputs.update == 'true'
+        uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
+        with:
+          context: .
+          load: true
+          tags: caddy-infomaniak:smoke
+          cache-from: type=gha
+
+      - name: Smoke test
+        if: steps.check.outputs.update == 'true'
+        run: test/smoke.sh caddy-infomaniak:smoke
+
+      # Pull requests opened with GITHUB_TOKEN don't trigger workflows, so the
+      # checks above are the only ones that run before review.
+      - name: Open pull request
+        if: steps.check.outputs.update == 'true'
+        env:
+          CURRENT: ${{ steps.check.outputs.current }}
+          VERSION: ${{ steps.check.outputs.version }}
+          BRANCH: ${{ steps.check.outputs.branch }}
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git switch -c "$BRANCH"
+          git commit -m "Update Infomaniak plugin to $VERSION" Dockerfile
+          git push --force origin "$BRANCH"
+          gh pr create --title "Update Infomaniak plugin to $VERSION" \
+            --body "Changes: https://github.com/caddy-dns/infomaniak/compare/v$CURRENT...v$VERSION
+
+          The image built and passed \`test/smoke.sh\`. A real DNS challenge was not run. Merging rebuilds and republishes the current Caddy version."
