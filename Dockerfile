@@ -1,7 +1,7 @@
 # syntax=docker/dockerfile:1
 
 # Bumped automatically by .github/workflows/release.yml.
-ARG CADDY_VERSION=2.11.8
+ARG CADDY_VERSION=2.11.9
 # Bumped by pull request from .github/workflows/plugin-update.yml.
 ARG INFOMANIAK_VERSION=1.0.2
 
